@@ -55,6 +55,8 @@ class RTPReceiver(object):
         elif self.audio_interface.type == 'alsa':
             sink = Gst.ElementFactory.make('alsasink')
             sink.set_property('device', self.audio_interface.alsa_device)
+            sink.set_property('buffer-time', self.audio_interface.buffer_time * 1000)
+            sink.set_property('sync', False) # True
         elif self.audio_interface.type == 'jack':
             sink = Gst.ElementFactory.make('jackaudiosink')
             if self.audio_interface.jack_auto:
@@ -65,6 +67,10 @@ class RTPReceiver(object):
             sink.set_property('client-name', self.audio_interface.jack_name)
             if self.audio_interface.jack_port_pattern:
                 sink.set_property('port-pattern', self.audio_interface.jack_port_pattern)
+        elif self.audio_interface.type == 'pulse':
+            sink = Gst.ElementFactory.make('pulsesink')
+            sink.set_property('buffer-time', self.audio_interface.buffer_time * 1000)
+            sink.set_property('sync', False) # True
         elif self.audio_interface.type == 'test':
             sink = Gst.ElementFactory.make('fakesink')
 
@@ -86,7 +92,7 @@ class RTPReceiver(object):
 
         resample.link(convert)
         convert.link(level)
-        level.link(sink)
+        level.link(sink)        
 
         bin.add_pad(Gst.GhostPad.new('sink', resample.get_static_pad('sink')))
 
@@ -134,6 +140,8 @@ class RTPReceiver(object):
         udpsrc.set_property('port', self.link_config.port)
         udpsrc.set_property('caps', udpsrc_caps)
         udpsrc.set_property('timeout', 3000000000)
+        udpsrc.set_property('do-timestamp', False)
+        udpsrc.set_property('retrieve-sender-address', False)
         # if self.link_config.multicast:
             # udpsrc.set_property('auto_multicast', True)
             # udpsrc.set_property('multicast_group', self.link_config.receiver_host)
@@ -144,6 +152,7 @@ class RTPReceiver(object):
         rtpbin.set_property('latency', self.link_config.jitter_buffer)
         rtpbin.set_property('autoremove', True)
         rtpbin.set_property('do-lost', True)
+        rtpbin.set_property('buffer-mode', 0) # 0 = none
         bin.add(rtpbin)
 
         udpsrc.link_pads('src', rtpbin, 'recv_rtp_sink_0')
@@ -199,17 +208,20 @@ if __name__ == '__main__':
     class AudioInterface(object):
         def __init__(self):
             self.interface_name = 'default'
+            # self.type = 'auto'
             # self.type = 'alsa'
-            self.type = 'auto'
             self.alsa_device = 'hw:0'
+            self.type = 'pulse'
+            self.buffer_time = 6
 
     class Config(object):
         def __init__(self):
             self.encoding = 'opus'
             self.receiver_host = '192.168.2.112'
             self.port = 51350
-            self.jitter_buffer = 40 # ms
-            self.caps = 'application/x-rtp, media=(string)audio, clock-rate=(int)48000, encoding-name=(string)OPUS, sprop-maxcapturerate=(string)48000, sprop-stereo=(string)0, payload=(int)96, encoding-params=(string)2, ssrc=(uint)745879912, timestamp-offset=(uint)4053379707, seqnum-offset=(uint)32184'
+            self.jitter_buffer = 4 # 40 ms
+#            self.caps = 'application/x-rtp, media=(string)audio, clock-rate=(int)48000, encoding-name=(string)OPUS, sprop-maxcapturerate=(string)48000, sprop-stereo=(string)0, payload=(int)96, encoding-params=(string)2'
+            self.caps = 'application/x-rtp, media=(string)audio, clock-rate=(int)48000, encoding-name=(string)OPUS, sprop-stereo=(string)0'
 
     receiver = RTPReceiver(Config(), AudioInterface())
     receiver.run()
